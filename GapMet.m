@@ -1,11 +1,11 @@
 function [dt_fill,dt_flags,dt_dist,dt_corr] = GapMet(dt_coord,dt_data,pree_meth,min_est,max_dis,SD_lim,ref_type,dt_extern)
 
-%% GAPMET - MULTIPLE METHODS FOR GAP-FILLING METEOROLOGY STATIONS : 
+%% GAPMET - MULTIPLE METHODS FOR GAP-FILLING METEOROLOGY WEATHER STATIONS : 
 
-% The script runs 6 methodologies for gap-filling meteorological data
-% series. The script was originally tested in 33 automatic weather stations
-% on the state of Mato Grosso, Brazil with data series of the variables
-% maximum and minimum air temperature, relative humidity, downward solar
+% The script runs six methodologies for gap-filling meteorological data
+% series. It was originally tested on 33 automatic weather stations
+% on the state of Mato Grosso, Brazil, with data series of the variables
+% including maximum and minimum air temperature, relative humidity, downward solar
 % radiation, and mean wind speed) (Sabino et al., 2023).
 % - Sabino, M. and Souza, A.P.D., 2022. Gap-filling meteorological data
 % series using the GapMET software in the state of Mato Grosso, Brazil.
@@ -16,13 +16,13 @@ function [dt_fill,dt_flags,dt_dist,dt_corr] = GapMet(dt_coord,dt_data,pree_meth,
 %
 %  INPUTS:
 %  Name:        Description:                                    type:
-%  dt_coord  = Matriz containing 3 column with:                 matriz(n,3)
+%  dt_coord  = Matriz containing 3 columns with:                 matriz(n,3)
 %              (id,latitude,longitude) of 
 %              n stations (rows).
 %              latitude and longitude must be in decimal degrees
 %
 %  dt_data   = Matriz containing the timeseries.                matriz(m,n)
-%              Each columns  represents one stations.
+%              Each column  represents one stations.
 %              Each row represents a time step 
 %              *Columns 1 to 3 are reserved to
 %              year, month and day, respectively.
@@ -35,17 +35,17 @@ function [dt_fill,dt_flags,dt_dist,dt_corr] = GapMet(dt_coord,dt_data,pree_meth,
 %                - IDM : Inverse distance method 
 %                - MAS : Simple arithmetic mean
 %
-%  min_est   =  Minimal number os nearby stations used as       vector[1,1]
+%  min_est   =  Minimal number of nearby stations used as       vector[1,1]
 %               referrence. Must be a number betwwen 1 and 
 %               the maximmum number of reference stations 
 %               provided.The RLS and MUK methods will only 
 %               use more than 1 station as reference if 
-%               there are commitment gaps between the 
+%               there are concomitant gaps in the 
 %               reference and gapfilled station.
 %               Defaut = 3. Must be an possitive integer.
 %
-%  max_dis   = Maximum distance between the reference and       vector[1,1]
-%              gapfilled station.
+%  max_dis   = Maximum accepeted distance between the           vector[1,1]
+%              reference and gapfilled station.
 %              Defaut = 100. Must be an possitive integer.
 %
 %  SD_lim    = Maximum standard deviations (SD).                vector[1,1]
@@ -57,18 +57,16 @@ function [dt_fill,dt_flags,dt_dist,dt_corr] = GapMet(dt_coord,dt_data,pree_meth,
 %              maximum and minimum values of the observed data 
 %              by set “SD_lim = 0”
 %
-%  ref_type  = What dataset will be used as reference station   string[1,1]
+%  ref_type  = Type of dataset to be used as reference        string[1,1]
 %              for the gapffiling:
 %               - nearby   : Use neaby stations provided 
-%                            on the same dataset (Use this for 
-%                            the following methods: RLM; MPR; 
-%                            IID or MAS).(default)
+%                            on the same dataset.
 %               - external : Use stations provided on 
 %                            an external dataset (Use this for
 %                            the following methods: RLS or MUK).
 %
-%  dt_exter = Matriz containing external timeseries            matriz(n,m)
-%              Each columns  represents one stations.
+%  dt_exter = Matriz containing external time series            matriz(n,m)
+%              Each column  represents one stations.
 %              Each row represents a time step 
 %              *Columns 1 to 3 are reserved to
 %              year, month and day, respectively.
@@ -78,15 +76,15 @@ function [dt_fill,dt_flags,dt_dist,dt_corr] = GapMet(dt_coord,dt_data,pree_meth,
 %
 % OUTPUTS:
 % Name:        Description:                                    type:
-% dt_fill    = matriz containing the gapfiled timeseries        matriz(n,m)  
+% dt_fill    = matriz containing the gapfilled time series        matriz(n,m)  
 % dt_flags   = matriz containing the flag of "dt_pree" data    matriz(n,m)
 %              - 0     : original data
-%              - 1     : gapfilled on first interaction
-%                       (use reference serie original data)
-%              - 2...x : gapfilled on secont to x interaction
+%              - 1     : gapfilled on first iteraction
+%                       (use reference series original data)
+%              - 2...x : gapfilled on second to x iteraction
 %                       (use reference serie gapfilled data)
 %              - NaN: unfilled gap
-% dt_dist    = matriz containing the distance in Kilometers     matriz(n,m) 
+% dt_dist    = matriz containing the distance in kilometers     matriz(n,m) 
 %              between the stations in dt_dados.
 % dt_corr    = matriz containing the pearson correlation rs     matriz(n,m) 
 %              between the stations in dt_dados.
@@ -110,7 +108,7 @@ if ~exist('min_est','var')
 elseif  isempty(min_est)
     min_est = 3;
 elseif isaninteger(min_est)==0 && any(min_est<0)
-    error(('"SD_lim" must be a possitive integer'))
+    error(('"min_est" must be a possitive integer'))
 end
 
 if ~exist('max_dis','var')
@@ -118,7 +116,7 @@ if ~exist('max_dis','var')
 elseif isempty(max_dis)
     max_dis = 100;
 elseif isaninteger(max_dis)==0 && any(max_dis<0)
-    error(('"SD_lim" must be a possitive integer'))
+    error(('"max_dis" must be a possitive integer'))
 end
 
 if ~exist('SD_lim','var')
@@ -195,8 +193,8 @@ end
 %--------------------------------------------------------------------------
 %% 2 Calculate stations distance
 %--------------------------------------------------------------------------
-% The the distance between the stations calculatio is done by function
-% vdist initially proposed by Vincenty (1975) and adapted by Kleder (2021)
+% The the distance between the stations is calculated by the function
+% vdist proposed by Vincenty (1975) and adapted by Kleder (2021)
 %
 % - Vincenty, T. "Direct and Inverse Solutions of Geodesics on the Ellipsoid
 %with Application of Nested Equations", Survey Review, vol. 23, no. 176,
@@ -238,7 +236,7 @@ if ref_type==1
     if max_dis<min_dis
         error(['The shortest distance to all stations have at least'...
                ' 1 reference station within the "max_dis" is '...
-               ,num2str(min_dis),' Km'])
+               ,num2str(min_dis),' km'])
     end
 
     dt1 = dt;dt1(dt1<=max_dis) = 1;dt1(dt1>max_dis) = 0;
@@ -250,7 +248,7 @@ if ref_type==1
         error(['The number of reference stations within the "max_dis" radius'...
                ' is lower than set in "min_est".'...
                ' decrease the "min_est" parameter to ',num2str(min_est_in_max_dis), ' stations'...
-               ' or increase "max_dis" to ',num2str(max_dis_in_min_est),' Km'])
+               ' or increase "max_dis" to ',num2str(max_dis_in_min_est),' km'])
     end
 end
 
@@ -331,7 +329,7 @@ if contains(("MPR,MUK"),pree_meth)==1
 end
 
 %--------------------------------------------------------------------------
-%% 6 Gapfilling 
+%% 6 Gap-filling 
 %--------------------------------------------------------------------------
 %--------------------------------------------------------------------------
 % 6.1 RLS : Simple linear regression
@@ -424,5 +422,3 @@ matfile = [pwd '\gapfilled\Flags.csv'];
 writetable(dt_flags,matfile)
 
 end
-
-

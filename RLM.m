@@ -1,4 +1,4 @@
-function [dt_pree,dt_flag] = RLM(dt_ori,SD_lim,min_est,index_est)
+function [dt_pree,dt_flag] = RLM(dt_ori,limit_type,interval,min_est,index_est)
 %% RLM : Multiple linear regression
 % RLS is one of the methods used in the GapMet function to gapfilling
 % meteorological time series. RLS computes a multiple linear regression and
@@ -14,16 +14,20 @@ function [dt_pree,dt_flag] = RLM(dt_ori,SD_lim,min_est,index_est)
 %              Each columns  represents one stations.
 %              Each row represents a time step
 %
-%   SD_lim  =  Maximum standard deviations (SD).                vector[1,1]
-%              Limits the filling values between “D” 
-%              standard deviations of the mean observed data.
-%              (mean+-D*SD).
-%              Defaut = 3. Must be an possitive integer.
-%              Additionally, user can set the limit as the 
-%              maximum and minimum values of the observed data 
-%              by set “SD_lim = 0”
+%limit_type = Limits the filling values between an interval     string[1,1]
+%              which can be defined as:
+%              - range      : Uses either the min and max values
+%                             of the data in dt_data 
+%                             or the min and max values define
+%                             by the user.(Default)
+%              - percentile : Uses a min and max percentile for 
+%                             interval.
+%interval  = Set the min and max interval based on the           array[2,1]
+%             limit_type.
+%             Default = [min,max] for limit_type = "range".
+%             Default = [5,99] for limit_type = "percentile".
 %
-%  min_est =  Minimal number os nearby stations used as       vector[1,1]
+%  min_est =  Minimal number os nearby stations used as          vector[1,1]
 %             referrence. Must be a number betwwen 1 and 
 %             the maximmum number of reference stations 
 %             provided.
@@ -46,11 +50,38 @@ function [dt_pree,dt_flag] = RLM(dt_ori,SD_lim,min_est,index_est)
 %--------------------------------------------------------------------------
 %% 1. Check inputs
 %--------------------------------------------------------------------------
-isaninteger = @(x)isfinite(x) & x==floor(x);
-if isempty(SD_lim)
-    SD_lim = 3;
-elseif isaninteger(SD_lim)==0 && any(SD_lim<0)
-    error(('"SD_lim" must be a possitive integer'))
+if ~exist('limit_type','var')
+    limit_type = "range";
+elseif isempty(limit_type)
+    limit_type = "range";
+elseif ~contains(("range"),limit_type) 
+    if ~contains(("percentile"),limit_type)
+        error(('"limit_type" must be "range" or "percentile"'))
+    end
+end
+
+if contains(("percentile"),limit_type)
+    if ~exist('interval','var')
+        interval = [5 95];
+    elseif isempty(interval)
+        interval = [5 95];
+    elseif ~isnumeric(interval)
+        error(('The "percentile" "interval" must be an array with min and max percentile'))
+    elseif interval(1)>=interval(2)
+        error(('The "percentile" min interval must be lower than max interval'))
+    elseif any(interval<0) || any(interval>100)
+        error(('The "percentile" min and max interval must be between 0 and 100'))
+    end
+elseif contains(("range"),limit_type)
+    if ~exist('interval','var')
+        interval = [min(dt_ori(:)) max(dt_ori(:))];
+    elseif isempty(interval)
+        interval = [min(dt_ori(:)) max(dt_ori(:))];
+    elseif ~isnumeric(interval)
+        error(('The "range" "interval" must be an array with min and max values'))
+    elseif interval(1)>=interval(2)
+        error(('The min interval must be lower than max interval'))
+    end   
 end
 
 if any(size(dt_ori,2)<(min_est+1))
@@ -111,7 +142,7 @@ while numNans_fim < numNans_inicio
                 end
             end
         end
-        [gap_filled_checked]=LimCheck(dt_ori,gap,gap_filled,SD_lim);
+        [gap_filled_checked]=LimCheck(dt_ori,gap,gap_filled,limit_type,interval);
         dt(:,p) = gap_filled_checked;
     end
     numNans_fim = nnz(isnan(dt));

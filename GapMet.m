@@ -1,4 +1,4 @@
-function [dt_fill,dt_flags,dt_dist,dt_corr] = GapMet(dt_coord,dt_data,pree_meth,min_est,max_dis,SD_lim,ref_type,dt_extern)
+function [dt_fill,dt_flags,dt_dist,dt_corr] = GapMet(dt_coord,dt_data,pree_meth,min_est,max_dis,limit_type,interval,ref_type,dt_extern)
 
 %% GAPMET - MULTIPLE METHODS FOR GAP-FILLING METEOROLOGY WEATHER STATIONS : 
 
@@ -30,34 +30,38 @@ function [dt_fill,dt_flags,dt_dist,dt_corr] = GapMet(dt_coord,dt_data,pree_meth,
 %  pree_meth  = Gapfilling methodology:                         string[1,1]
 %                - RLS : Simple linear regression
 %                - RLM : Multiple linear regression 
-%                - MPR : Regionalweighting method
+%                - MPR : Regional weighting method
 %                - MUK : UK traditionalmethod
 %                - IDM : Inverse distance method 
 %                - MAS : Simple arithmetic mean
 %
-%  min_est   =  Minimal number of nearby stations used as       vector[1,1]
+%  min_est   =  Minimal number of nearby stations used as        array[1,1]
 %               referrence. Must be a number betwwen 1 and 
 %               the maximmum number of reference stations 
 %               provided.The RLS and MUK methods will only 
 %               use more than 1 station as reference if 
 %               there are concomitant gaps in the 
 %               reference and gapfilled station.
-%               Defaut = 3. Must be an possitive integer.
+%               Default = 3. Must be an possitive integer.
 %
-%  max_dis   = Maximum accepeted distance between the           vector[1,1]
+%  max_dis   = Maximum accepeted distance between the            array[1,1]
 %              reference and gapfilled station.
-%              Defaut = 100. Must be an possitive integer.
+%              Default = 100. Must be an possitive integer.
 %
-%  SD_lim    = Maximum standard deviations (SD).                vector[1,1]
-%              Limits the filling values between “D” 
-%              standard deviations of the mean observed data.
-%              (mean+-D*SD).
-%              Defaut = 3. Must be an possitive integer.
-%              Additionally, user can set the limit as the 
-%              maximum and minimum values of the observed data 
-%              by set “SD_lim = 0”
+% limit_type = Limits the filling values between an interval    string[1,1]
+%              which can be defined as:
+%              - range      : Uses either the min and max values
+%                             of the data in dt_data 
+%                             or the min and max values define
+%                             by the user.(Default)
+%              - percentile : Uses a min and max percentile for 
+%                             the interval.
+% interval  = Set the min and max interval based on the          array[2,1]
+%             limit_type.
+%             Default = [min,max] for limit_type = "range".
+%             Default = [5,99] for limit_type = "percentile".
 %
-%  ref_type  = Type of dataset to be used as reference        string[1,1]
+%  ref_type  = Type of dataset to be used as reference          string[1,1]
 %              for the gapffiling:
 %               - nearby   : Use neaby stations provided 
 %                            on the same dataset.
@@ -96,12 +100,12 @@ function [dt_fill,dt_flags,dt_dist,dt_corr] = GapMet(dt_coord,dt_data,pree_meth,
 %--------------------------------------------------------------------------
 % 1.1 Check Input Parameters
 %--------------------------------------------------------------------------
+isaninteger = @(x)isfinite(x) & x==floor(x);
+
 if length(pree_meth)~=1 && ~isstring(pree_meth) && contains(("RLS,RLM,MPR,MUK,IDM,MAS"),pree_meth)==0
     error(['''pree_meth'' must be a string containing one of the gapfilling '...
            'methods: (RLS,RLM,MPR,MUK,IDM, or MAS)'])
 end
-
-isaninteger = @(x)isfinite(x) & x==floor(x);
 
 if ~exist('min_est','var')
     min_est = 3;
@@ -119,12 +123,38 @@ elseif isaninteger(max_dis)==0 && any(max_dis<0)
     error(('"max_dis" must be a possitive integer'))
 end
 
-if ~exist('SD_lim','var')
-    SD_lim = 3;
-elseif isempty(SD_lim)
-    SD_lim = 3;
-elseif isaninteger(SD_lim)==0 && any(SD_lim<0)
-    error(('"SD_lim" must be a possitive integer'))
+if ~exist('limit_type','var')
+    limit_type = "range";
+elseif isempty(limit_type)
+    limit_type = "range";
+elseif ~contains(("range"),limit_type) 
+    if ~contains(("percentile"),limit_type)
+        error(('"limit_type" must be "range" or "percentile"'))
+    end
+end
+
+if contains(("percentile"),limit_type)
+    if ~exist('range','var')
+        interval = [5 95];
+    elseif isempty(range)
+        interval = [5 95];
+    elseif ~isnumeric(interval)
+        error(('The "percentile" "interval" must be an array with min and max percentile'))
+    elseif interval(1)>=interval(2)
+        error(('The "percentile" min interval must be lower than max interval'))
+    elseif any(interval<0) || any(interval>100)
+        error(('The "percentile" min and max interval must be between 0 and 100'))
+    end
+elseif contains(("range"),limit_type)
+    if ~exist('interval','var')
+        interval = [min(dt_data{:,4:end},[],'all') max(dt_data{:,4:end},[],'all')];
+    elseif isempty(interval)
+        interval = [min(dt_data{:,4:end},[],'all') max(dt_data{:,4:end},[],'all')];
+    elseif ~isnumeric(interval)
+        error(('The "range" "interval" must be an array with min and max values'))
+    elseif interval(1)>=interval(2)
+        error(('The min interval must be lower than max interval'))
+    end    
 end
 
 if ~exist('ref_type','var')
@@ -336,9 +366,9 @@ end
 %--------------------------------------------------------------------------
 if pree_meth=="RLS"
     if ref_type==1
-        [dt_pree,dt_flag] = RLS(dt_ori,SD_lim,ref_type,index_est,[]);
+        [dt_pree,dt_flag] = RLS(dt_ori,limit_type,interval,ref_type,index_est,[]);
     else
-        [dt_pree,dt_flag] = RLS(dt_ori,SD_lim,ref_type,[],dt_ext);
+        [dt_pree,dt_flag] = RLS(dt_ori,limit_type,interval,ref_type,[],dt_ext);
     end
 end
 
@@ -347,7 +377,7 @@ end
 %--------------------------------------------------------------------------
 if pree_meth=="RLM"
     if ref_type==1
-        [dt_pree,dt_flag] = RLM(dt_ori,SD_lim,min_est,index_est);
+        [dt_pree,dt_flag] = RLM(dt_ori,limit_type,interval,min_est,index_est);
     else
        error('This methodology (RLM) can only be used with nearby reference stations (Ref_type="nearby")')
     end
@@ -358,7 +388,7 @@ end
 %--------------------------------------------------------------------------
 if pree_meth=="MPR"
     if ref_type==1
-       [dt_pree,dt_flag] = MPR(dt_ori,dt_mean_month,dt_months,SD_lim,min_est,index_est);
+       [dt_pree,dt_flag] = MPR(dt_ori,dt_mean_month,dt_months,limit_type,interval,min_est,index_est);
     else
        error('This methodology (MPR) can only be used with nearby reference stations (Ref_type="nearby")')
     end
@@ -369,9 +399,9 @@ end
 %--------------------------------------------------------------------------
 if pree_meth=="MUK"
     if ref_type==1
-        [dt_pree,dt_flag] = MUK(dt_ori,dt_mean_month,dt_months,SD_lim,ref_type,index_est,[],[]);
+        [dt_pree,dt_flag] = MUK(dt_ori,dt_mean_month,dt_months,limit_type,interval,ref_type,index_est,[],[]);
     else
-        [dt_pree,dt_flag] = MUK(dt_ori,dt_mean_month,dt_months,SD_lim,ref_type,[],dt_ext,dt_mean_ext);
+        [dt_pree,dt_flag] = MUK(dt_ori,dt_mean_month,dt_months,limit_type,interval,ref_type,[],dt_ext,dt_mean_ext);
     end
 end
 
@@ -380,7 +410,7 @@ end
 %--------------------------------------------------------------------------
 if pree_meth=="IDM"
     if ref_type==1
-        [dt_pree,dt_flag] = IDM(dt_ori,dt_dist,SD_lim,min_est,index_est);
+        [dt_pree,dt_flag] = IDM(dt_ori,dt_dist,limit_type,interval,min_est,index_est);
     else
        error('This methodology (IDM) can only be used with nearby reference stations (Ref_type="nearby")')
     end
@@ -391,7 +421,7 @@ end
 %--------------------------------------------------------------------------
 if pree_meth=="MAS"
     if ref_type==1
-        [dt_pree,dt_flag] = MAS(dt_ori,SD_lim,min_est,index_est);
+        [dt_pree,dt_flag] = MAS(dt_ori,limit_type,interval,min_est,index_est);
     else
        error('This methodology (MAS) can only be used with nearby reference stations (Ref_type="nearby")')
     end
